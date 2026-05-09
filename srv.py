@@ -2,10 +2,10 @@ import sys
 import random
 import socket
 
-# Requisito do TP:
-# - Uma senha representada como uma sequência com entre 4 e 8 zeros indica que uma senha
-# daquele comprimento deve ser escolhida aleatoriamente pelo servidor no momento da execução.
 def setup_random_password_if_needed (password):
+	# Requisito do TP:
+	# - Uma senha representada como uma sequência com entre 4 e 8 zeros indica que uma senha
+	# daquele comprimento deve ser escolhida aleatoriamente pelo servidor no momento da execução.
 	is_password_composed_only_by_zeros = all(character == '0' for character in password)
 
 	if (is_password_composed_only_by_zeros):
