@@ -1,8 +1,17 @@
 import sys
 import random
 import socket
+import struct
+from enum import IntEnum
 
 PROTOCOL_MESSAGE_CHECKSUM_BYTE_INDEX = 1
+
+class MessageType(IntEnum):
+	HEL = 1
+	TRY = 2
+	RES = 3
+	BYE = 4
+	ERR = 5
 
 def setup_random_password_if_needed (password):
 	# Requisito do TP:
@@ -19,6 +28,13 @@ def setup_random_password_if_needed (password):
 		return random_password
 	else:
 		return password
+	
+def parse_message (message):
+	type = message[0]
+	sequence_number = struct.unpack('!H', message[2:4])[0]
+	payload = message[4:] if len(message) > 4 else b''
+
+	return type, sequence_number, payload
 	
 def calculate_message_checksum (message):
 	checksum = 0
@@ -68,6 +84,18 @@ def handle_socket_client_connections(socket_server, password, max_attempts):
 			print("Received invalid message from client, ignoring...")
 			continue
 
+		type, sequence_number, payload = parse_message(message)
+
+		match type:
+			case MessageType.HEL:
+				print("Hello")
+			case MessageType.TRY:
+				print("Try")
+			case MessageType.BYE:
+				print("Bye")
+			case _:
+				print("Received message with unknown type, ignoring...")
+
 def main():
 	port = int(sys.argv[1])
 	password = str(sys.argv[2])
@@ -78,6 +106,8 @@ def main():
 	socket_server = setup_socket_server(port)
 
 	handle_socket_client_connections(socket_server, password, max_attempts)
+
+	socket_server.close()
 
 if __name__ == '__main__':
   main()
