@@ -67,7 +67,7 @@ def setup_socket_server (port):
 	return socket_server
 
 def handle_socket_client_connections(socket_server, password, max_attempts):
-	clients = {}
+	client_address_to_client_state = {}
 	total_processed_clients = 0
 
 	# Requisito do TP:
@@ -85,6 +85,7 @@ def handle_socket_client_connections(socket_server, password, max_attempts):
 			continue
 
 		type, sequence_number, payload = parse_message(message)
+		client_state = client_address_to_client_state[address]
 
 		match type:
 			case MessageType.HEL:
