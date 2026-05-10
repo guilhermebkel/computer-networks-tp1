@@ -76,12 +76,9 @@ def handle_socket_client_connections(socket_server, password, max_attempts):
 	max_processed_clients = 2
 
 	while total_processed_clients < max_processed_clients:
-		print("Waiting for client connection...")
-
 		message, address = socket_server.recvfrom(2048)
 
 		if not is_valid_message(message):
-			print("Received invalid message from client, ignoring...")
 			continue
 
 		type, sequence_number, payload = parse_message(message)
