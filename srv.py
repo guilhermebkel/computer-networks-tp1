@@ -2,6 +2,8 @@ import sys
 import random
 import socket
 
+PROTOCOL_MESSAGE_CHECKSUM_BYTE_INDEX = 1
+
 def setup_random_password_if_needed (password):
 	# Requisito do TP:
 	# - Uma senha representada como uma sequência com entre 4 e 8 zeros indica que uma senha
@@ -17,6 +19,30 @@ def setup_random_password_if_needed (password):
 		return random_password
 	else:
 		return password
+	
+def calculate_message_checksum (message):
+	checksum = 0
+
+	for index, byte in enumerate(message):
+		is_not_protocol_message_checksum_byte = index != PROTOCOL_MESSAGE_CHECKSUM_BYTE_INDEX
+
+		if is_not_protocol_message_checksum_byte:
+			checksum ^= byte
+
+	return checksum
+	
+def is_valid_message (message):
+	has_minimum_protocol_message_size = len(message) >= 4
+
+	if not has_minimum_protocol_message_size:
+		return False
+	else:
+		calculated_message_checksum = calculate_message_checksum(message)
+		protocol_message_checksum = message[PROTOCOL_MESSAGE_CHECKSUM_BYTE_INDEX]
+
+		is_valid_checksum = calculated_message_checksum == protocol_message_checksum
+
+		return is_valid_checksum
 	
 def setup_socket_server (port):
 	socket_server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -35,6 +61,12 @@ def handle_socket_client_connections(socket_server, password, max_attempts):
 
 	while total_processed_clients < max_processed_clients:
 		print("Waiting for client connection...")
+
+		message, address = socket_server.recvfrom(2048)
+
+		if not is_valid_message(message):
+			print("Received invalid message from client, ignoring...")
+			continue
 
 def main():
 	port = int(sys.argv[1])
