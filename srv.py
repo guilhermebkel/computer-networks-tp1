@@ -38,7 +38,7 @@ def handle_socket_client_connections(socket_server, password, max_attempts):
 
 def main():
 	port = int(sys.argv[1])
-	password = sys.argv[2]
+	password = str(sys.argv[2])
 	max_attempts = int(sys.argv[3])
 
 	password = setup_random_password_if_needed(password)
