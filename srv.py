@@ -6,6 +6,8 @@ from enum import IntEnum
 
 PROTOCOL_MESSAGE_CHECKSUM_BYTE_INDEX = 1
 
+client_address_to_client_state = {}
+
 class MessageType(IntEnum):
 	HEL = 1
 	TRY = 2
@@ -35,6 +37,15 @@ def parse_message (message):
 	payload = message[4:] if len(message) > 4 else b''
 
 	return type, sequence_number, payload
+
+def build_message (type, sequence_number, payload=b''):
+	sequence_number_in_bytes = struct.pack('!H', sequence_number & 0xFFFF)
+	raw_message = bytes([type, 0]) + sequence_number_in_bytes + payload
+	checksum = calculate_message_checksum(raw_message)
+
+	response_message = bytes([type, checksum]) + sequence_number_in_bytes + payload
+
+	return response_message
 	
 def calculate_message_checksum (message):
 	checksum = 0
@@ -66,8 +77,35 @@ def setup_socket_server (port):
 
 	return socket_server
 
-def handle_socket_client_connections(socket_server, password, max_attempts):
-	client_address_to_client_state = {}
+def process_hel_message (sequence_number, socket_server, client_address, password, max_attempts):
+	client_state = client_address_to_client_state[client_address]
+
+	has_invalid_sequence_number = sequence_number != 0
+
+	if has_invalid_sequence_number:
+		response_message = build_message(MessageType.ERR, sequence_number)
+		socket_server.sendto(response_message, client_address)
+		return
+	
+	is_client_already_initialized = client_state is not None and client_state['phase'] != 'init'
+
+	if is_client_already_initialized:
+		if client_state['last_sent']:
+			socket_server.sendto(client_state['last_sent'], client_address)
+		return
+	
+	pattern_in_bytes = bytes([ord('?')] * len(password) + [ord(' ')] * (8 - len(password)))
+	response_message = build_message(MessageType.RES, max_attempts, pattern_in_bytes)
+
+	client_address_to_client_state[client_address] = {
+		'phase': 'playing',
+		'expected_sequence_number': 1,
+		'last_sent': response_message
+	}
+
+	socket_server.sendto(response_message, client_address)
+
+def handle_socket_client_connections (socket_server, password, max_attempts):
 	total_processed_clients = 0
 
 	# Requisito do TP:
@@ -76,17 +114,16 @@ def handle_socket_client_connections(socket_server, password, max_attempts):
 	max_processed_clients = 2
 
 	while total_processed_clients < max_processed_clients:
-		message, address = socket_server.recvfrom(2048)
+		client_message, client_address = socket_server.recvfrom(2048)
 
-		if not is_valid_message(message):
+		if not is_valid_message(client_message):
 			continue
 
-		type, sequence_number, payload = parse_message(message)
-		client_state = client_address_to_client_state[address]
+		type, sequence_number, payload = parse_message(client_message)
 
 		match type:
 			case MessageType.HEL:
-				print("Hello")
+				process_hel_message(sequence_number, socket_server, client_address, password, max_attempts)
 			case MessageType.TRY:
 				print("Try")
 			case MessageType.BYE:
