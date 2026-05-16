@@ -94,11 +94,11 @@ def evaluate_password_guess (password, client_guess_digits):
 		is_guess_contained_in_password = guess_digit in password
 
 		if is_valid_guess_digit:
-			evaluation.append(GuessEval.CORRECT_POSITION.value)
+			evaluation.append(GuessEval.CORRECT_POSITION)
 		elif is_guess_contained_in_password:
-			evaluation.append(GuessEval.WRONG_POSITION.value)
+			evaluation.append(GuessEval.WRONG_POSITION)
 		else:
-			evaluation.append(GuessEval.NOT_IN_PASSWORD.value)
+			evaluation.append(GuessEval.NOT_IN_PASSWORD)
 
 	return ''.join(evaluation)
 
