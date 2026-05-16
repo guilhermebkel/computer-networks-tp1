@@ -2,7 +2,7 @@ import sys
 import random
 import socket
 import struct
-from enum import IntEnum
+from enum import IntEnum, Enum
 
 PROTOCOL_MESSAGE_CHECKSUM_BYTE_INDEX = 1
 
@@ -14,6 +14,10 @@ class MessageType(IntEnum):
 	RES = 3
 	BYE = 4
 	ERR = 5
+
+class ClientStatePhase(Enum):
+	INIT = 'init'
+	PLAYING = 'playing'
 
 def setup_random_password_if_needed (password):
 	# Requisito do TP:
@@ -77,6 +81,22 @@ def setup_socket_server (port):
 
 	return socket_server
 
+def evaluate_password_guess (password, client_guess_digits):
+	evaluation = []
+
+	for index, guess_digit in enumerate(client_guess_digits):
+		is_valid_guess_digit = guess_digit == password[index]
+		is_guess_contained_in_password = guess_digit in password
+
+		if is_valid_guess_digit:
+			evaluation.append('*')
+		elif is_guess_contained_in_password:
+			evaluation.append('+')
+		else:
+			evaluation.append('-')
+
+	return ''.join(evaluation)
+
 def process_hel_message (sequence_number, socket_server, client_address, password, max_attempts):
 	client_state = client_address_to_client_state[client_address]
 
@@ -87,22 +107,88 @@ def process_hel_message (sequence_number, socket_server, client_address, passwor
 		socket_server.sendto(response_message, client_address)
 		return
 	
-	is_client_already_initialized = client_state is not None and client_state['phase'] != 'init'
+	is_client_already_initialized = client_state is not None and client_state['phase'] != ClientStatePhase.INIT
 
 	if is_client_already_initialized:
 		if client_state['last_sent']:
 			socket_server.sendto(client_state['last_sent'], client_address)
 		return
 	
-	pattern_in_bytes = bytes([ord('?')] * len(password) + [ord(' ')] * (8 - len(password)))
-	response_message = build_message(MessageType.RES, max_attempts, pattern_in_bytes)
+	password_guess_evaluation_in_bytes = bytes([ord('?')] * len(password) + [ord(' ')] * (8 - len(password)))
+	response_message = build_message(MessageType.RES, max_attempts, password_guess_evaluation_in_bytes)
 
 	client_address_to_client_state[client_address] = {
-		'phase': 'playing',
+		'phase': ClientStatePhase.PLAYING,
 		'expected_sequence_number': 1,
 		'last_sent': response_message
 	}
 
+	socket_server.sendto(response_message, client_address)
+
+def process_try_message (sequence_number, socket_server, client_address, client_message, password, payload, max_attempts):
+	client_state = client_address_to_client_state[client_address]
+
+	is_client_not_initialized_yet = client_state is None or client_state['phase'] != ClientStatePhase.PLAYING
+
+	if is_client_not_initialized_yet:
+		response_message = build_message(MessageType.ERR, 0)
+		socket_server.sendto(response_message, client_address)
+		return
+
+	expected_sequence_number = client_state['expected_sequence_number']
+
+	is_message_retransmission = sequence_number < expected_sequence_number
+
+	if is_message_retransmission:
+		if client_state['last_sent']:
+			socket_server.sendto(client_state['last_sent'], client_address)
+		return
+
+	is_message_out_of_order_or_max_attempted = sequence_number > expected_sequence_number or sequence_number > max_attempts
+
+	if is_message_out_of_order_or_max_attempted:
+		response_message = build_message(MessageType.ERR, sequence_number)
+		socket_server.sendto(response_message, client_address)
+		return
+
+	is_message_incomplete = len(client_message) < 12
+
+	if is_message_incomplete:
+		response_message = build_message(MessageType.ERR, sequence_number)
+		client_state['last_sent'] = response_message
+		client_state['expected_sequence_number'] = sequence_number + 1
+		socket_server.sendto(response_message, client_address)
+		return
+
+	client_guess_digits = list(payload[:len(password)])
+
+	is_valid_client_guess = True
+
+	for guess_digit in client_guess_digits:
+		is_guess_digit_outside_valid_range = guess_digit < 0 or guess_digit > 9
+
+		if is_guess_digit_outside_valid_range:
+			is_valid_client_guess = False
+			break
+	
+	is_guess_with_repeated_digits = len(set(client_guess_digits)) != len(password)
+
+	if is_guess_with_repeated_digits:
+		is_valid_client_guess = False
+	
+	if not is_valid_client_guess:
+		response_message = build_message(MessageType.ERR, sequence_number)
+		client_state['last_sent'] = response_message
+		client_state['expected_sequence_number'] = sequence_number + 1
+		socket_server.sendto(response_message, client_address)
+		return
+	
+	password_guess_evaluation = evaluate_password_guess(password, client_guess_digits)
+	remaining_attempts = max_attempts - sequence_number
+	password_guess_evaluation_in_bytes = bytes([ord(guess_item) for guess_item in password_guess_evaluation] + [ord(' ')] * (8 - len(password)))
+	response_message = build_message(MessageType.RES, remaining_attempts, password_guess_evaluation_in_bytes)
+	client_state['last_sent'] = response_message
+	client_state['expected_sequence_number'] = sequence_number + 1
 	socket_server.sendto(response_message, client_address)
 
 def handle_socket_client_connections (socket_server, password, max_attempts):
@@ -125,7 +211,7 @@ def handle_socket_client_connections (socket_server, password, max_attempts):
 			case MessageType.HEL:
 				process_hel_message(sequence_number, socket_server, client_address, password, max_attempts)
 			case MessageType.TRY:
-				print("Try")
+				process_try_message(sequence_number, socket_server, client_address, client_message, password, payload, max_attempts)
 			case MessageType.BYE:
 				print("Bye")
 			case _:
