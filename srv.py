@@ -189,8 +189,8 @@ def process_try_message (sequence_number, socket_server, client_address, passwor
 		return
 	
 	password_guess_evaluation = evaluate_password_guess(password, client_guess_digits)
-	remaining_attempts = max_attempts - sequence_number
 	password_guess_evaluation_in_bytes = bytes([ord(eval_item) for eval_item in password_guess_evaluation] + [ord(' ')] * (8 - len(password)))
+	remaining_attempts = max_attempts - sequence_number
 	response_message = build_message(MessageType.RES, remaining_attempts, password_guess_evaluation_in_bytes)
 	client_state['last_sent'] = response_message
 	client_state['expected_sequence_number'] = sequence_number + 1
