@@ -22,9 +22,6 @@ class ClientStatePhase(Enum):
 	DONE = 'done'
 
 def setup_random_password_if_needed (password):
-	# Requisito do TP:
-	# - Uma senha representada como uma sequência com entre 4 e 8 zeros indica que uma senha
-	# daquele comprimento deve ser escolhida aleatoriamente pelo servidor no momento da execução.
 	is_password_composed_only_by_zeros = all(character == '0' for character in password)
 
 	if (is_password_composed_only_by_zeros):
@@ -239,9 +236,6 @@ def process_unknown_message (socket_server, client_address):
 	socket_server.sendto(response_message, client_address)
 
 def handle_socket_client_connections (socket_server, password, max_attempts):
-	# Requisito do TP:
-	# - O programa servidor não deve ler nada da entrada padrão, nem escrever nada na saída padrão,
-	# deve terminar depois que atender dois clientes (depois que o segundo cliente executar seu BYE).
 	max_processed_clients = 2
 
 	while total_processed_clients < max_processed_clients:
