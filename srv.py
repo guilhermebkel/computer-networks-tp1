@@ -7,6 +7,7 @@ from enum import IntEnum, Enum
 PROTOCOL_MESSAGE_CHECKSUM_BYTE_INDEX = 1
 
 client_address_to_client_state = {}
+total_processed_clients = 0
 
 class MessageType(IntEnum):
 	HEL = 1
@@ -18,6 +19,7 @@ class MessageType(IntEnum):
 class ClientStatePhase(Enum):
 	INIT = 'init'
 	PLAYING = 'playing'
+	DONE = 'done'
 
 def setup_random_password_if_needed (password):
 	# Requisito do TP:
@@ -125,7 +127,7 @@ def process_hel_message (sequence_number, socket_server, client_address, passwor
 
 	socket_server.sendto(response_message, client_address)
 
-def process_try_message (sequence_number, socket_server, client_address, client_message, password, payload, max_attempts):
+def process_try_message (sequence_number, socket_server, client_address, password, client_message, payload, max_attempts):
 	client_state = client_address_to_client_state[client_address]
 
 	is_client_not_initialized_yet = client_state is None or client_state['phase'] != ClientStatePhase.PLAYING
@@ -185,15 +187,58 @@ def process_try_message (sequence_number, socket_server, client_address, client_
 	
 	password_guess_evaluation = evaluate_password_guess(password, client_guess_digits)
 	remaining_attempts = max_attempts - sequence_number
-	password_guess_evaluation_in_bytes = bytes([ord(guess_item) for guess_item in password_guess_evaluation] + [ord(' ')] * (8 - len(password)))
+	password_guess_evaluation_in_bytes = bytes([ord(eval_item) for eval_item in password_guess_evaluation] + [ord(' ')] * (8 - len(password)))
 	response_message = build_message(MessageType.RES, remaining_attempts, password_guess_evaluation_in_bytes)
 	client_state['last_sent'] = response_message
 	client_state['expected_sequence_number'] = sequence_number + 1
 	socket_server.sendto(response_message, client_address)
 
-def handle_socket_client_connections (socket_server, password, max_attempts):
-	total_processed_clients = 0
+def process_bye_message (sequence_number, socket_server, client_address, password):
+	client_state = client_address_to_client_state[client_address]
 
+	is_client_invalid_state = client_state is None
+
+	if is_client_invalid_state:
+		response_message = build_message(MessageType.ERR, 0)
+		socket_server.sendto(response_message, client_address)
+		return
+	
+	is_client_already_finished = client_state['phase'] == ClientStatePhase.DONE
+
+	if is_client_already_finished:
+		if client_state['last_sent']:
+			socket_server.sendto(client_state['last_sent'], client_address)
+		return
+		
+	is_client_not_initialized_yet = client_state['phase'] != ClientStatePhase.PLAYING
+
+	if is_client_not_initialized_yet:
+		response_message = build_message(MessageType.ERR, 0)
+		socket_server.sendto(response_message, client_address)
+		return
+
+	expected_bye_sequence_number = client_state['expected_sequence_number'] - 1
+
+	is_out_of_order_bye_message = sequence_number != expected_bye_sequence_number
+
+	if is_out_of_order_bye_message:
+		response_message = build_message(MessageType.ERR, sequence_number)
+		socket_server.sendto(response_message, client_address)
+		return
+
+	password_in_bytes = bytes([ord(password_digit) for password_digit in password] + [ord(' ')] * (8 - len(password)))
+	response_message = build_message(MessageType.RES, 0xFFFF, password_in_bytes)
+	client_state['last_sent'] = response_message
+	client_state['phase'] = ClientStatePhase.DONE
+	socket_server.sendto(response_message, client_address)
+
+	total_processed_clients += 1
+
+def process_unknown_message (socket_server, client_address):
+	response_message = build_message(MessageType.ERR, 0)
+	socket_server.sendto(response_message, client_address)
+
+def handle_socket_client_connections (socket_server, password, max_attempts):
 	# Requisito do TP:
 	# - O programa servidor não deve ler nada da entrada padrão, nem escrever nada na saída padrão,
 	# deve terminar depois que atender dois clientes (depois que o segundo cliente executar seu BYE).
@@ -211,11 +256,11 @@ def handle_socket_client_connections (socket_server, password, max_attempts):
 			case MessageType.HEL:
 				process_hel_message(sequence_number, socket_server, client_address, password, max_attempts)
 			case MessageType.TRY:
-				process_try_message(sequence_number, socket_server, client_address, client_message, password, payload, max_attempts)
+				process_try_message(sequence_number, socket_server, client_address, password, client_message, payload, max_attempts)
 			case MessageType.BYE:
-				print("Bye")
+				process_bye_message(sequence_number, socket_server, client_address, password)
 			case _:
-				print("Received message with unknown type, ignoring...")
+				process_unknown_message(socket_server, client_address)
 
 def main():
 	port = int(sys.argv[1])
