@@ -206,9 +206,9 @@ def process_bye_message (sequence_number, socket_server, client_address, passwor
 		socket_server.sendto(response_message, client_address)
 		return
 	
-	is_client_already_finished = client_state['phase'] == ClientStatePhase.DONE
+	is_client_already_done = client_state['phase'] == ClientStatePhase.DONE
 
-	if is_client_already_finished:
+	if is_client_already_done:
 		if client_state['last_sent']:
 			socket_server.sendto(client_state['last_sent'], client_address)
 		return
