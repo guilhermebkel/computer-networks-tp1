@@ -21,6 +21,12 @@ class ClientStatePhase(Enum):
 	PLAYING = 'playing'
 	DONE = 'done'
 
+class GuessEval(Enum):
+	CORRECT_POSITION = '*'
+	WRONG_POSITION = '+'
+	NOT_IN_PASSWORD = '-'
+	UNKNOWN = '?'
+
 def setup_random_password_if_needed (password):
 	is_password_composed_only_by_zeros = all(character == '0' for character in password)
 
@@ -88,11 +94,11 @@ def evaluate_password_guess (password, client_guess_digits):
 		is_guess_contained_in_password = guess_digit in password
 
 		if is_valid_guess_digit:
-			evaluation.append('*')
+			evaluation.append(GuessEval.CORRECT_POSITION.value)
 		elif is_guess_contained_in_password:
-			evaluation.append('+')
+			evaluation.append(GuessEval.WRONG_POSITION.value)
 		else:
-			evaluation.append('-')
+			evaluation.append(GuessEval.NOT_IN_PASSWORD.value)
 
 	return ''.join(evaluation)
 
@@ -112,9 +118,9 @@ def process_hel_message (sequence_number, socket_server, client_address, passwor
 		if client_state['last_sent']:
 			socket_server.sendto(client_state['last_sent'], client_address)
 		return
-	
-	password_guess_evaluation_in_bytes = bytes([ord('?')] * len(password) + [ord(' ')] * (8 - len(password)))
-	response_message = build_message(MessageType.RES, max_attempts, password_guess_evaluation_in_bytes)
+
+	initial_password_guess_evaluation_in_bytes = bytes([ord(GuessEval.UNKNOWN)] * len(password) + [ord(' ')] * (8 - len(password)))
+	response_message = build_message(MessageType.RES, max_attempts, initial_password_guess_evaluation_in_bytes)
 
 	client_address_to_client_state[client_address] = {
 		'phase': ClientStatePhase.PLAYING,
@@ -127,9 +133,9 @@ def process_hel_message (sequence_number, socket_server, client_address, passwor
 def process_try_message (sequence_number, socket_server, client_address, password, client_message, payload, max_attempts):
 	client_state = client_address_to_client_state[client_address]
 
-	is_client_not_initialized_yet = client_state is None or client_state['phase'] != ClientStatePhase.PLAYING
+	is_client_not_playing_yet = client_state is None or client_state['phase'] != ClientStatePhase.PLAYING
 
-	if is_client_not_initialized_yet:
+	if is_client_not_playing_yet:
 		response_message = build_message(MessageType.ERR, 0)
 		socket_server.sendto(response_message, client_address)
 		return
@@ -207,9 +213,9 @@ def process_bye_message (sequence_number, socket_server, client_address, passwor
 			socket_server.sendto(client_state['last_sent'], client_address)
 		return
 		
-	is_client_not_initialized_yet = client_state['phase'] != ClientStatePhase.PLAYING
+	is_client_not_playing_yet = client_state['phase'] != ClientStatePhase.PLAYING
 
-	if is_client_not_initialized_yet:
+	if is_client_not_playing_yet:
 		response_message = build_message(MessageType.ERR, 0)
 		socket_server.sendto(response_message, client_address)
 		return
